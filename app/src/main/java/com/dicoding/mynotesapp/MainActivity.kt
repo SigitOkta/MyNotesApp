@@ -1,11 +1,15 @@
 package com.dicoding.mynotesapp
 
 import android.content.Intent
+import android.database.ContentObserver
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
+import android.os.Handler
+import android.os.HandlerThread
 import android.view.View
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.dicoding.mynotesapp.adapter.NoteAdapter
+import com.dicoding.mynotesapp.db.DatabaseContract.NoteColumns.Companion.CONTENT_URI
 import com.dicoding.mynotesapp.db.NoteHelper
 import com.dicoding.mynotesapp.entity.Note
 import com.dicoding.mynotesapp.helper.MappingHelper
@@ -18,7 +22,6 @@ import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
     private lateinit var adapter: NoteAdapter
-    private lateinit var noteHelper: NoteHelper
 
     companion object {
         private const val EXTRA_STATE = "EXTRA_STATE"
@@ -40,8 +43,16 @@ class MainActivity : AppCompatActivity() {
             startActivityForResult(intent, NoteAddUpdateActivity.REQUEST_ADD)
         }
 
-        noteHelper = NoteHelper.getInstance(applicationContext)
-        noteHelper.open()
+        val handlerThread = HandlerThread("DataObserver")
+        handlerThread.start()
+        val handler = Handler(handlerThread.looper)
+        val myObserver = object : ContentObserver(handler) {
+            override fun onChange(self: Boolean) {
+                loadNotesAsync()
+            }
+        }
+
+        contentResolver.registerContentObserver(CONTENT_URI, true, myObserver)
 
         /*
         Cek jika savedInstaceState null makan akan melakukan proses asynctask nya
@@ -61,7 +72,7 @@ class MainActivity : AppCompatActivity() {
         GlobalScope.launch(Dispatchers.Main) {
             progressbar.visibility = View.VISIBLE
             val deferredNotes = async(Dispatchers.IO) {
-                val cursor = noteHelper.queryAll()
+                val cursor = contentResolver?.query(CONTENT_URI, null, null, null, null)
                 MappingHelper.mapCursorToArrayList(cursor)
             }
             progressbar.visibility = View.INVISIBLE
@@ -125,11 +136,6 @@ class MainActivity : AppCompatActivity() {
                     }
             }
         }
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        noteHelper.close()
     }
 
     /**
